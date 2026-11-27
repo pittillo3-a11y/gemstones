@@ -8,37 +8,21 @@ const db = new Database(path.join(__dirname, '../data/game.db'));
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS rooms (
-    id INTEGER PRIMARY KEY,
-    name TEXT,
-    description TEXT,
-    exits TEXT
+    id INTEGER PRIMARY KEY, name TEXT, description TEXT, exits TEXT
   );
   CREATE TABLE IF NOT EXISTS players (
-    id INTEGER PRIMARY KEY,
-    name TEXT UNIQUE,
-    room_id INTEGER DEFAULT 1,
-    hp INTEGER DEFAULT 40,
-    max_hp INTEGER DEFAULT 40
+    id INTEGER PRIMARY KEY, name TEXT UNIQUE, room_id INTEGER DEFAULT 1,
+    hp INTEGER DEFAULT 40, max_hp INTEGER DEFAULT 40
   );
   CREATE TABLE IF NOT EXISTS items (
-    id INTEGER PRIMARY KEY,
-    name TEXT,
-    description TEXT,
-    room_id INTEGER,
-    player_id INTEGER,
-    location TEXT DEFAULT 'room',
-    wearable INTEGER DEFAULT 0,
-    worn INTEGER DEFAULT 0,
-    container INTEGER DEFAULT 0,
-    container_id INTEGER
+    id INTEGER PRIMARY KEY, name TEXT, description TEXT,
+    room_id INTEGER, player_id INTEGER, location TEXT DEFAULT 'room',
+    wearable INTEGER DEFAULT 0, worn INTEGER DEFAULT 0,
+    container INTEGER DEFAULT 0, container_id INTEGER
   );
   CREATE TABLE IF NOT EXISTS creatures (
-    id INTEGER PRIMARY KEY,
-    name TEXT,
-    description TEXT,
-    room_id INTEGER,
-    hp INTEGER DEFAULT 10,
-    max_hp INTEGER DEFAULT 10
+    id INTEGER PRIMARY KEY, name TEXT, description TEXT,
+    room_id INTEGER, hp INTEGER DEFAULT 10, max_hp INTEGER DEFAULT 10
   );
 `);
 
@@ -52,219 +36,137 @@ try { db.exec('ALTER TABLE players ADD COLUMN max_hp INTEGER DEFAULT 40'); } cat
 function ensureRoom(id, name, description, exits) {
   const exists = db.prepare('SELECT id FROM rooms WHERE id = ?').get(id);
   if (!exists) {
-    db.prepare('INSERT INTO rooms (id, name, description, exits) VALUES (?, ?, ?, ?)').run(
-      id, name, description, JSON.stringify(exits)
-    );
+    db.prepare('INSERT INTO rooms (id, name, description, exits) VALUES (?, ?, ?, ?)').run(id, name, description, JSON.stringify(exits));
   } else {
-    db.prepare('UPDATE rooms SET name = ?, description = ?, exits = ? WHERE id = ?').run(
-      name, description, JSON.stringify(exits), id
-    );
+    db.prepare('UPDATE rooms SET name = ?, description = ?, exits = ? WHERE id = ?').run(name, description, JSON.stringify(exits), id);
   }
 }
 
-// Core town
-ensureRoom(1, 'Town Square',
-  'You stand in the heart of a small human town. Cobblestones underfoot, wooden buildings all around, and the smell of bread and smoke in the air.',
-  { north: 11, south: 4, east: 12, west: 13 });
-ensureRoom(4, 'South Gate',
-  'The southern gate of the town stands open. A path leads out toward the hills.',
-  { north: 1, south: 5 });
-ensureRoom(5, 'Hill Path',
-  'A narrow path climbs a grassy hill. A dark opening is visible ahead.',
-  { north: 4, south: 6 });
-ensureRoom(6, 'Dungeon Entrance',
-  'A rough stone archway opens into darkness. Cool air drifts out.',
-  { north: 5, down: 7 });
-ensureRoom(7, 'Upper Corridor',
-  'A low stone corridor lit by flickering torches.',
-  { up: 6, east: 8, west: 9 });
-ensureRoom(8, 'Guard Chamber',
-  'An old guard chamber. Broken furniture and a shield on the wall.',
-  { west: 7 });
-ensureRoom(9, 'West Passage',
-  'The corridor narrows. Water drips ahead.',
-  { east: 7, west: 10 });
-ensureRoom(10, 'Collapsed Room',
-  'Rubble fills most of this chamber. A blocked doorway stands on the far side.',
-  { east: 9 });
+ensureRoom(1, 'Town Square', 'Cobblestone square at the heart of town. Smoke and bread smells drift on the air.', { north: 11, south: 4, east: 12, west: 13 });
+ensureRoom(4, 'South Gate', 'The southern gate stands open. A path leads toward the hills.', { north: 1, south: 5 });
+ensureRoom(5, 'Hill Path', 'A grassy path climbs toward a dark opening in the rock.', { north: 4, south: 6 });
+ensureRoom(6, 'Dungeon Entrance', 'Stone archway into darkness. Cool air drifts out.', { north: 5, down: 7 });
+ensureRoom(7, 'Upper Corridor', 'Low stone corridor lit by torches.', { up: 6, east: 8, west: 9 });
+ensureRoom(8, 'Guard Chamber', 'Old guard room with broken furniture.', { west: 7 });
+ensureRoom(9, 'West Passage', 'Narrow passage. Water drips somewhere ahead.', { east: 7, west: 10 });
+ensureRoom(10, 'Collapsed Room', 'Rubble-filled chamber. A doorway is blocked by stone.', { east: 9 });
 
-// New town rooms (11–30)
-ensureRoom(11, 'North Street',
-  'A busy cobblestone street running north from the square. Shops and houses line both sides.',
-  { south: 1, north: 14, east: 15, west: 16 });
-ensureRoom(12, 'East Street',
-  'The eastern street. You can hear the ring of a hammer from the smithy.',
-  { west: 1, east: 17, north: 18 });
-ensureRoom(13, 'West Street',
-  'A quieter street. Laundry hangs between the buildings.',
-  { east: 1, west: 19, south: 20 });
-ensureRoom(14, 'Market Square',
-  'A small open market. Stalls sell bread, cloth, and simple tools.',
-  { south: 11, north: 21, east: 22 });
-ensureRoom(15, 'Baker Street',
-  'The smell of fresh bread is strong here. The bakery door stands open.',
-  { west: 11, east: 23 });
-ensureRoom(16, 'Residential Lane',
-  'Narrow lane with modest wooden houses. A dog sleeps in a doorway.',
-  { east: 11, west: 24, north: 25 });
-ensureRoom(17, 'Smithy',
-  'Heat rolls out of the open smithy. Tools hang on the walls and a sword lies on the anvil.',
-  { west: 12 });
-ensureRoom(18, 'Armorer Shop',
-  'Racks of leather armor and a few metal pieces. The shopkeeper nods at you.',
-  { south: 12 });
-ensureRoom(19, 'General Store',
-  'Shelves packed with rope, torches, rations, and odds and ends.',
-  { east: 13 });
-ensureRoom(20, 'Inn Yard',
-  'The yard of the local inn. A stable stands to one side and the inn door is open.',
-  { north: 13, east: 26 });
-ensureRoom(21, 'North Gate Road',
-  'The road leading to the north gate. Fields are visible beyond the wall.',
-  { south: 14 });
-ensureRoom(22, 'Clothier',
-  'Bolts of cloth and simple cloaks. A mirror stands in the corner.',
-  { west: 14 });
-ensureRoom(23, 'Bakery',
-  'Warm and bright. Loaves cool on the counter.',
-  { west: 15 });
-ensureRoom(24, 'Small House',
-  'A modest one-room house. A table, a bed, and a chest.',
-  { east: 16 });
-ensureRoom(25, 'Herb Garden',
-  'A tiny garden behind the houses. Herbs grow in neat rows.',
-  { south: 16 });
-ensureRoom(26, 'The Rusty Flagon Inn',
-  'The common room of the inn. A fire burns in the hearth and a few locals sit at tables.',
-  { west: 20, up: 27 });
-ensureRoom(27, 'Inn Upstairs',
-  'A short hallway with doors to guest rooms.',
-  { down: 26, east: 28, west: 29 });
-ensureRoom(28, 'Guest Room',
-  'A simple room with a bed and a washbasin.',
-  { west: 27 });
-ensureRoom(29, 'Another Guest Room',
-  'Nearly identical to the other guest room. A window looks over the yard.',
-  { east: 27 });
-ensureRoom(30, 'Town Well',
-  'A stone well sits in a small plaza. Buckets and rope are nearby.',
-  { south: 11, east: 1 });
+ensureRoom(11, 'North Street', 'Busy cobblestone street. Shops and houses line both sides.', { south: 1, north: 14, east: 15, west: 16 });
+ensureRoom(12, 'East Street', 'Eastern street. The ring of a hammer comes from the smithy.', { west: 1, east: 17, north: 18, south: 31 });
+ensureRoom(13, 'West Street', 'Quieter street. Laundry hangs between buildings.', { east: 1, west: 19, south: 20, north: 32 });
+ensureRoom(14, 'Market Square', 'Small open market with stalls of bread, cloth, and tools.', { south: 11, north: 21, east: 22, west: 33 });
+ensureRoom(15, 'Baker Street', 'The smell of fresh bread is strong. Bakery door is open.', { west: 11, east: 23, north: 34 });
+ensureRoom(16, 'Residential Lane', 'Narrow lane of modest wooden houses.', { east: 11, west: 24, north: 25, south: 35 });
+ensureRoom(17, 'Smithy', 'Hot smithy. Tools on the walls, sword on the anvil.', { west: 12 });
+ensureRoom(18, 'Armorer Shop', 'Racks of leather and a few metal pieces.', { south: 12 });
+ensureRoom(19, 'General Store', 'Shelves of rope, torches, rations, and odds and ends.', { east: 13 });
+ensureRoom(20, 'Inn Yard', 'Yard of the local inn. Stable to one side.', { north: 13, east: 26, south: 36 });
+ensureRoom(21, 'North Gate Road', 'Road to the north gate. Fields beyond the wall.', { south: 14, north: 37 });
+ensureRoom(22, 'Clothier', 'Bolts of cloth and simple cloaks.', { west: 14 });
+ensureRoom(23, 'Bakery', 'Warm bakery. Loaves cooling on the counter.', { west: 15 });
+ensureRoom(24, 'Small House', 'Modest one-room house with table, bed, and chest.', { east: 16 });
+ensureRoom(25, 'Herb Garden', 'Tiny garden with neat rows of herbs.', { south: 16, north: 38 });
+ensureRoom(26, 'The Rusty Flagon Inn', 'Common room. Fire in the hearth, locals at tables.', { west: 20, up: 27 });
+ensureRoom(27, 'Inn Upstairs', 'Hallway with doors to guest rooms.', { down: 26, east: 28, west: 29 });
+ensureRoom(28, 'Guest Room', 'Simple room with bed and washbasin.', { west: 27 });
+ensureRoom(29, 'Another Guest Room', 'Window looks over the inn yard.', { east: 27 });
+ensureRoom(30, 'Town Well', 'Stone well in a small plaza.', { south: 11, west: 1 });
 
-// Seed items and creatures if needed
-const itemCount = db.prepare('SELECT COUNT(*) as c FROM items').get().c;
-if (itemCount === 0) {
-  db.prepare(`INSERT INTO items (name, description, room_id, location, wearable, container) VALUES (?, ?, ?, 'room', 0, 0)`).run(
-    'rusty sword', 'A worn short sword with a few notches in the blade.', 1
-  );
-  db.prepare(`INSERT INTO items (name, description, room_id, location, wearable, container) VALUES (?, ?, ?, 'room', 1, 1)`).run(
-    'leather backpack', 'A simple leather pack with room for a few items.', 1
-  );
+// New rooms 31-48
+ensureRoom(31, 'East Alley', 'Narrow alley behind the east street shops. Crates and barrels.', { north: 12, south: 39 });
+ensureRoom(32, 'West Alley', 'Shadowy alley. A cat watches from a fence.', { south: 13, west: 40 });
+ensureRoom(33, 'Market Stall Row', 'Row of wooden stalls. One sells dried meat.', { east: 14 });
+ensureRoom(34, 'Mill Road', 'Road leading toward a small mill outside the walls.', { south: 15, north: 41 });
+ensureRoom(35, 'Back Lane', 'Quiet back lane between houses.', { north: 16, east: 42 });
+ensureRoom(36, 'Stable', 'Smell of hay and horses. A few stalls, most empty.', { north: 20 });
+ensureRoom(37, 'North Gate', 'The northern gate. Guards occasionally pass through.', { south: 21, north: 43 });
+ensureRoom(38, 'Chapel Garden', 'Small garden beside the town chapel.', { south: 25, east: 44 });
+ensureRoom(39, 'Warehouse', 'Dim warehouse full of crates and sacks.', { north: 31 });
+ensureRoom(40, 'Tanner Yard', 'Yard behind the tanner. Hides hang on racks.', { east: 32 });
+ensureRoom(41, 'Old Mill', 'Abandoned mill. The wheel no longer turns.', { south: 34 });
+ensureRoom(42, 'Potter Shop', 'Clay pots and jars on shelves. Kiln in the back.', { west: 35 });
+ensureRoom(43, 'North Fields Path', 'Dirt path through the fields north of town.', { south: 37 });
+ensureRoom(44, 'Chapel', 'Small stone chapel. Wooden pews and a simple altar.', { west: 38, south: 45 });
+ensureRoom(45, 'Chapel Basement', 'Cool basement under the chapel. Old stores and a locked door.', { north: 44 });
+ensureRoom(46, 'Guard Post', 'Small guard post near the south gate.', { north: 4, east: 47 });
+ensureRoom(47, 'Barracks', 'Simple barracks. Bunks and weapon racks.', { west: 46 });
+ensureRoom(48, 'Mayor House', 'The largest house in town. Well-kept garden in front.', { south: 14, north: 49 });
+ensureRoom(49, 'Mayor Study', 'Wood-paneled study. Maps on the wall.', { south: 48 });
+
+function ensureItem(name, desc, roomId, wearable=0, container=0) {
+  const e = db.prepare('SELECT id FROM items WHERE lower(name)=? AND room_id=? AND location="room"').get(name.toLowerCase(), roomId);
+  if (!e) db.prepare('INSERT INTO items (name, description, room_id, location, wearable, container) VALUES (?,?,?,"room",?,?)').run(name, desc, roomId, wearable, container);
 }
-db.prepare(`UPDATE items SET wearable = 1, container = 1 WHERE lower(name) LIKE '%backpack%'`).run();
-db.prepare(`UPDATE items SET wearable = 1 WHERE lower(name) LIKE '%shield%'`).run();
-
-function ensureItem(name, description, roomId, wearable = 0, container = 0) {
-  const exists = db.prepare('SELECT id FROM items WHERE lower(name) = ? AND room_id = ? AND location = "room"').get(name.toLowerCase(), roomId);
-  if (!exists) {
-    db.prepare(`INSERT INTO items (name, description, room_id, location, wearable, container) VALUES (?, ?, ?, 'room', ?, ?)`).run(
-      name, description, roomId, wearable, container
-    );
-  }
-}
+ensureItem('rusty sword', 'A worn short sword.', 1);
+ensureItem('leather backpack', 'A simple leather pack.', 1, 1, 1);
 ensureItem('old shield', 'A battered wooden shield.', 8, 1);
-ensureItem('torch', 'A simple wooden torch.', 7);
-ensureItem('loaf of bread', 'A fresh loaf of bread.', 23);
-ensureItem('iron sword', 'A newly forged iron sword.', 17, 0);
-ensureItem('leather armor', 'A set of boiled leather armor.', 18, 1);
-ensureItem('rope', 'A coil of hemp rope.', 19);
+ensureItem('torch', 'A wooden torch.', 7);
+ensureItem('loaf of bread', 'Fresh bread.', 23);
+ensureItem('iron sword', 'A newly forged sword.', 17);
+ensureItem('leather armor', 'Boiled leather armor.', 18, 1);
+ensureItem('rope', 'A coil of rope.', 19);
 ensureItem('tankard', 'A wooden tankard.', 26);
+ensureItem('dried meat', 'Strips of dried meat.', 33);
+ensureItem('clay pot', 'A simple clay pot.', 42);
+ensureItem('prayer book', 'A worn prayer book.', 44);
 
-function ensureCreature(name, description, roomId, hp) {
-  const exists = db.prepare('SELECT id FROM creatures WHERE name = ? AND room_id = ?').get(name, roomId);
-  if (!exists) {
-    db.prepare(`INSERT INTO creatures (name, description, room_id, hp, max_hp) VALUES (?, ?, ?, ?, ?)`).run(
-      name, description, roomId, hp, hp
-    );
-  }
+function ensureCreature(name, desc, roomId, hp) {
+  const e = db.prepare('SELECT id FROM creatures WHERE name=? AND room_id=?').get(name, roomId);
+  if (!e) db.prepare('INSERT INTO creatures (name, description, room_id, hp, max_hp) VALUES (?,?,?,?,?)').run(name, desc, roomId, hp, hp);
 }
-ensureCreature('giant rat', 'A large, mangy rat with yellow teeth.', 7, 12);
-ensureCreature('skeleton', 'A humanoid skeleton with glowing eye sockets.', 8, 18);
+ensureCreature('giant rat', 'A large mangy rat.', 7, 12);
+ensureCreature('skeleton', 'A skeleton with glowing eyes.', 8, 18);
+ensureCreature('stray dog', 'A thin stray dog. It growls half-heartedly.', 32, 8);
 
 const server = http.createServer((req, res) => {
   if (req.url === '/' || req.url === '/index.html') {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.writeHead(200, {'Content-Type':'text/html'});
     res.end(fs.readFileSync(path.join(__dirname, '../public/index.html')));
-  } else {
-    res.writeHead(404);
-    res.end('Not found');
-  }
+  } else { res.writeHead(404); res.end('Not found'); }
 });
 
 const wss = new WebSocket.Server({ server });
 const clients = new Map();
 
-function send(ws, msg) {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
-}
-
-function getRoom(id) {
-  return db.prepare('SELECT * FROM rooms WHERE id = ?').get(id);
-}
-
-function getItemsInRoom(roomId) {
-  return db.prepare(`SELECT * FROM items WHERE room_id = ? AND location = 'room' AND container_id IS NULL`).all(roomId);
-}
-
-function getPlayerItems(playerId) {
-  return db.prepare(`SELECT * FROM items WHERE player_id = ? AND location = 'inventory' AND container_id IS NULL`).all(playerId);
-}
-
-function getItemsInContainer(containerId) {
-  return db.prepare(`SELECT * FROM items WHERE container_id = ?`).all(containerId);
-}
+function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }
+function getRoom(id) { return db.prepare('SELECT * FROM rooms WHERE id=?').get(id); }
+function getItemsInRoom(rid) { return db.prepare('SELECT * FROM items WHERE room_id=? AND location="room" AND container_id IS NULL').all(rid); }
+function getPlayerItems(pid) { return db.prepare('SELECT * FROM items WHERE player_id=? AND location="inventory" AND container_id IS NULL').all(pid); }
+function getItemsInContainer(cid) { return db.prepare('SELECT * FROM items WHERE container_id=?').all(cid); }
 
 function describeRoom(room) {
   const exits = JSON.parse(room.exits || '{}');
   const exitList = Object.keys(exits).join(', ') || 'none';
   const items = getItemsInRoom(room.id);
-  const creatures = db.prepare(`SELECT * FROM creatures WHERE room_id = ? AND hp > 0`).all(room.id);
+  const creatures = db.prepare('SELECT * FROM creatures WHERE room_id=? AND hp>0').all(room.id);
   let extra = '';
-  if (items.length) extra += '\nYou also see: ' + items.map(i => i.name).join(', ');
-  if (creatures.length) extra += '\nCreatures here: ' + creatures.map(c => c.name).join(', ');
+  if (items.length) extra += '\nYou also see: ' + items.map(i=>i.name).join(', ');
+  if (creatures.length) extra += '\nCreatures here: ' + creatures.map(c=>c.name).join(', ');
   return `${room.name}\n${room.description}\nObvious exits: ${exitList}${extra}`;
 }
 
-wss.on('connection', (ws) => {
-  ws.on('message', (data) => {
-    let msg;
-    try { msg = JSON.parse(data); } catch { return; }
-
+wss.on('connection', ws => {
+  ws.on('message', data => {
+    let msg; try { msg = JSON.parse(data); } catch { return; }
     if (msg.type === 'login') {
-      const name = (msg.name || 'Traveler').trim().slice(0, 20);
-      if (!name) return;
-      let player = db.prepare('SELECT * FROM players WHERE name = ?').get(name);
+      const name = (msg.name || 'Traveler').trim().slice(0,20);
+      let player = db.prepare('SELECT * FROM players WHERE name=?').get(name);
       if (!player) {
-        db.prepare('INSERT INTO players (name, room_id, hp, max_hp) VALUES (?, 1, 40, 40)').run(name);
-        player = db.prepare('SELECT * FROM players WHERE name = ?').get(name);
-        send(ws, { type: 'text', text: `A new traveler arrives. Welcome, ${name}.` });
+        db.prepare('INSERT INTO players (name, room_id, hp, max_hp) VALUES (?,1,40,40)').run(name);
+        player = db.prepare('SELECT * FROM players WHERE name=?').get(name);
+        send(ws, {type:'text', text:`Welcome, ${name}.`});
       } else {
-        if ((player.max_hp || 0) < 40) {
-          db.prepare('UPDATE players SET hp = 40, max_hp = 40 WHERE id = ?').run(player.id);
-          player.hp = 40; player.max_hp = 40;
-        }
-        send(ws, { type: 'text', text: `Welcome back, ${name}.` });
+        if ((player.max_hp||0) < 40) db.prepare('UPDATE players SET hp=40, max_hp=40 WHERE id=?').run(player.id);
+        send(ws, {type:'text', text:`Welcome back, ${name}.`});
       }
       clients.set(ws, player);
-      const room = getRoom(player.room_id);
-      send(ws, { type: 'text', text: describeRoom(room) });
+      send(ws, {type:'text', text: describeRoom(getRoom(player.room_id))});
       return;
     }
-
     const player = clients.get(ws);
     if (!player) return;
-
     if (msg.type === 'command') {
-      const raw = (msg.text || '').trim();
+      const raw = (msg.text||'').trim();
       const input = raw.toLowerCase();
       const parts = input.split(/\s+/);
       const verb = parts[0];
@@ -272,117 +174,10 @@ wss.on('connection', (ws) => {
       if (verb === 'look' || verb === 'l') {
         const rest = parts.slice(1).join(' ');
         if (rest.startsWith('in ')) {
-          const contName = rest.slice(3).replace(/^my /, '');
-          const container = db.prepare(
-            `SELECT * FROM items WHERE player_id = ? AND location = 'inventory' AND container = 1 AND lower(name) LIKE ?`
-          ).get(player.id, `%${contName}%`);
-          if (!container) { send(ws, { type: 'text', text: 'You do not have that container.' }); return; }
-          const inside = getItemsInContainer(container.id);
-          send(ws, { type: 'text', text: inside.length ? `In the ${container.name}:\n` + inside.map(i => `  ${i.name}`).join('\n') : `The ${container.name} is empty.` });
+          const cn = rest.slice(3).replace(/^my /,'');
+          const c = db.prepare('SELECT * FROM items WHERE player_id=? AND container=1 AND lower(name) LIKE ?').get(player.id, `%${cn}%`);
+          if (!c) return send(ws, {type:'text', text:'You do not have that.'});
+          const inside = getItemsInContainer(c.id);
+          send(ws, {type:'text', text: inside.length ? `In the ${c.name}:\n`+inside.map(i=>'  '+i.name).join('\n') : `The ${c.name} is empty.`});
         } else if (!rest) {
-          send(ws, { type: 'text', text: describeRoom(getRoom(player.room_id)) });
-        } else {
-          const creature = db.prepare(`SELECT * FROM creatures WHERE room_id = ? AND hp > 0 AND lower(name) LIKE ?`).get(player.room_id, `%${rest}%`);
-          send(ws, { type: 'text', text: creature ? `${creature.name}\n${creature.description}\nHP: ${creature.hp}/${creature.max_hp}` : 'You do not see that here.' });
-        }
-      }
-      else if (verb === 'put') {
-        const m = raw.match(/put\s+(.+?)\s+in\s+(?:my\s+)?(.+)/i);
-        if (!m) { send(ws, { type: 'text', text: 'Put what in what?' }); return; }
-        const item = db.prepare(`SELECT * FROM items WHERE player_id = ? AND location = 'inventory' AND container_id IS NULL AND lower(name) LIKE ?`).get(player.id, `%${m[1].toLowerCase()}%`);
-        const container = db.prepare(`SELECT * FROM items WHERE player_id = ? AND location = 'inventory' AND container = 1 AND lower(name) LIKE ?`).get(player.id, `%${m[2].toLowerCase()}%`);
-        if (!item || !container) { send(ws, { type: 'text', text: 'You cannot do that.' }); return; }
-        db.prepare(`UPDATE items SET container_id = ? WHERE id = ?`).run(container.id, item.id);
-        send(ws, { type: 'text', text: `You put the ${item.name} in the ${container.name}.` });
-      }
-      else if (verb === 'get' || verb === 'take') {
-        const myMatch = raw.match(/(?:get|take)\s+my\s+(.+)/i);
-        const fromMatch = raw.match(/(?:get|take)\s+(.+?)\s+from\s+(?:my\s+)?(.+)/i);
-        if (myMatch) {
-          const itemName = myMatch[1].toLowerCase();
-          let item = db.prepare(`SELECT * FROM items WHERE player_id = ? AND location = 'inventory' AND container_id IS NULL AND lower(name) LIKE ?`).get(player.id, `%${itemName}%`);
-          if (!item) {
-            item = db.prepare(`SELECT items.* FROM items JOIN items AS c ON items.container_id = c.id WHERE c.player_id = ? AND lower(items.name) LIKE ?`).get(player.id, `%${itemName}%`);
-            if (item) db.prepare(`UPDATE items SET container_id = NULL WHERE id = ?`).run(item.id);
-          }
-          send(ws, { type: 'text', text: item ? `You ready the ${item.name}.` : 'You are not carrying that.' });
-        } else if (fromMatch) {
-          const container = db.prepare(`SELECT * FROM items WHERE player_id = ? AND container = 1 AND lower(name) LIKE ?`).get(player.id, `%${fromMatch[2].toLowerCase()}%`);
-          const item = container && db.prepare(`SELECT * FROM items WHERE container_id = ? AND lower(name) LIKE ?`).get(container.id, `%${fromMatch[1].toLowerCase()}%`);
-          if (item) {
-            db.prepare(`UPDATE items SET container_id = NULL WHERE id = ?`).run(item.id);
-            send(ws, { type: 'text', text: `You get the ${item.name} from the ${container.name}.` });
-          } else send(ws, { type: 'text', text: 'That is not in there.' });
-        } else {
-          const itemName = parts.slice(1).join(' ');
-          const item = db.prepare(`SELECT * FROM items WHERE room_id = ? AND location = 'room' AND container_id IS NULL AND lower(name) LIKE ?`).get(player.room_id, `%${itemName}%`);
-          if (item) {
-            db.prepare(`UPDATE items SET room_id = NULL, player_id = ?, location = 'inventory', worn = 0 WHERE id = ?`).run(player.id, item.id);
-            send(ws, { type: 'text', text: `You pick up the ${item.name}.` });
-          } else send(ws, { type: 'text', text: 'You do not see that here.' });
-        }
-      }
-      else if (verb === 'attack' || verb === 'kill') {
-        const target = parts.slice(1).join(' ');
-        const creature = db.prepare(`SELECT * FROM creatures WHERE room_id = ? AND hp > 0 AND lower(name) LIKE ?`).get(player.room_id, `%${target}%`);
-        if (!creature) { send(ws, { type: 'text', text: 'You do not see that here.' }); return; }
-        const dmg = Math.floor(Math.random() * 5) + 3;
-        const newHp = creature.hp - dmg;
-        let result = `You hit the ${creature.name} for ${dmg} damage.`;
-        if (newHp <= 0) {
-          db.prepare('UPDATE creatures SET hp = 0 WHERE id = ?').run(creature.id);
-          result += `\nThe ${creature.name} dies!`;
-        } else {
-          db.prepare('UPDATE creatures SET hp = ? WHERE id = ?').run(newHp, creature.id);
-          result += ` It has ${newHp} health left.`;
-          const bite = Math.floor(Math.random() * 4) + 1;
-          const p = db.prepare('SELECT hp FROM players WHERE id = ?').get(player.id);
-          const php = Math.max(0, (p.hp || 40) - bite);
-          db.prepare('UPDATE players SET hp = ? WHERE id = ?').run(php, player.id);
-          result += `\nThe ${creature.name} strikes you for ${bite}. You have ${php} health.`;
-        }
-        send(ws, { type: 'text', text: result });
-      }
-      else if (verb === 'rest') {
-        const p = db.prepare('SELECT hp, max_hp FROM players WHERE id = ?').get(player.id);
-        const healed = Math.min(p.max_hp, (p.hp || 0) + 10);
-        db.prepare('UPDATE players SET hp = ? WHERE id = ?').run(healed, player.id);
-        send(ws, { type: 'text', text: `You rest. Health: ${healed}/${p.max_hp}` });
-      }
-      else if (verb === 'go' || ['n','s','e','w','u','d','north','south','east','west','up','down'].includes(verb)) {
-        let dir = verb === 'go' ? parts[1] : verb;
-        const map = { n:'north', s:'south', e:'east', w:'west', u:'up', d:'down' };
-        dir = map[dir] || dir;
-        const room = getRoom(player.room_id);
-        const exits = JSON.parse(room.exits || '{}');
-        if (exits[dir]) {
-          player.room_id = exits[dir];
-          db.prepare('UPDATE players SET room_id = ? WHERE id = ?').run(player.room_id, player.id);
-          send(ws, { type: 'text', text: `You go ${dir}.\n\n${describeRoom(getRoom(player.room_id))}` });
-        } else send(ws, { type: 'text', text: 'You cannot go that way.' });
-      }
-      else if (verb === 'drop') {
-        const itemName = parts.slice(1).join(' ');
-        const item = db.prepare(`SELECT * FROM items WHERE player_id = ? AND location = 'inventory' AND container_id IS NULL AND lower(name) LIKE ?`).get(player.id, `%${itemName}%`);
-        if (item) {
-          db.prepare(`UPDATE items SET room_id = ?, player_id = NULL, location = 'room', worn = 0, container_id = NULL WHERE id = ?`).run(player.room_id, item.id);
-          send(ws, { type: 'text', text: `You drop the ${item.name}.` });
-        } else send(ws, { type: 'text', text: 'You are not carrying that.' });
-      }
-      else if (verb === 'wear') {
-        const itemName = parts.slice(1).join(' ');
-        const item = db.prepare(`SELECT * FROM items WHERE player_id = ? AND container_id IS NULL AND lower(name) LIKE ?`).get(player.id, `%${itemName}%`);
-        if (item && item.wearable) {
-          db.prepare(`UPDATE items SET worn = 1 WHERE id = ?`).run(item.id);
-          send(ws, { type: 'text', text: `You wear the ${item.name}.` });
-        } else send(ws, { type: 'text', text: 'You cannot wear that.' });
-      }
-      else if (verb === 'remove') {
-        const itemName = parts.slice(1).join(' ');
-        const item = db.prepare(`SELECT * FROM items WHERE player_id = ? AND worn = 1 AND lower(name) LIKE ?`).get(player.id, `%${itemName}%`);
-        if (item) {
-          db.prepare(`UPDATE items SET worn = 0 WHERE id = ?`).run(item.id);
-          send(ws, { type: 'text', text: `You remove the ${item.name}.` });
-        } else send(ws, { type: 'text', text: 'You are not wearing that.' });
-      }
-      else if (verb 
+          send(ws, {type:'text', text: describeRoom(getRoom(player.room_id))});
