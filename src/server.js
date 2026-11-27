@@ -28,6 +28,14 @@ db.exec(`
     wearable INTEGER DEFAULT 0,
     worn INTEGER DEFAULT 0
   );
+  CREATE TABLE IF NOT EXISTS creatures (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    description TEXT,
+    room_id INTEGER,
+    hp INTEGER DEFAULT 10,
+    max_hp INTEGER DEFAULT 10
+  );
 `);
 
 try { db.exec('ALTER TABLE items ADD COLUMN wearable INTEGER DEFAULT 0'); } catch(e) {}
@@ -96,6 +104,15 @@ function ensureItem(name, description, roomId, wearable = 0) {
 ensureItem('old shield', 'A battered wooden shield with faded paint.', 8, 1);
 ensureItem('torch', 'A simple wooden torch. It is not lit.', 7, 0);
 
+// Ensure the rat exists
+const rat = db.prepare('SELECT id FROM creatures WHERE name = ?').get('giant rat');
+if (!rat) {
+  db.prepare(`INSERT INTO creatures (name, description, room_id, hp, max_hp) VALUES (?, ?, 7, 12, 12)`).run(
+    'giant rat',
+    'A large, mangy rat with yellow teeth. It glares at you and squeaks aggressively.'
+  );
+}
+
 const server = http.createServer((req, res) => {
   if (req.url === '/' || req.url === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -129,10 +146,11 @@ function describeRoom(room) {
   const exits = JSON.parse(room.exits || '{}');
   const exitList = Object.keys(exits).join(', ') || 'none';
   const items = getItemsInRoom(room.id);
-  const itemText = items.length
-    ? '\nYou also see: ' + items.map(i => i.name).join(', ')
-    : '';
-  return `${room.name}\n${room.description}\nObvious exits: ${exitList}${itemText}`;
+  const creatures = db.prepare(`SELECT * FROM creatures WHERE room_id = ? AND hp > 0`).all(room.id);
+  let extra = '';
+  if (items.length) extra += '\nYou also see: ' + items.map(i => i.name).join(', ');
+  if (creatures.length) extra += '\nCreatures here: ' + creatures.map(c => c.name).join(', ');
+  return `${room.name}\n${room.description}\nObvious exits: ${exitList}${extra}`;
 }
 
 wss.on('connection', (ws) => {
@@ -166,8 +184,37 @@ wss.on('connection', (ws) => {
       const verb = parts[0];
 
       if (verb === 'look' || verb === 'l') {
-        const room = getRoom(player.room_id);
-        send(ws, { type: 'text', text: describeRoom(room) });
+        const target = parts.slice(1).join(' ');
+        if (!target) {
+          const room = getRoom(player.room_id);
+          send(ws, { type: 'text', text: describeRoom(room) });
+        } else {
+          const creature = db.prepare(
+            `SELECT * FROM creatures WHERE room_id = ? AND hp > 0 AND lower(name) LIKE ?`
+          ).get(player.room_id, `%${target}%`);
+          if (creature) {
+            send(ws, { type: 'text', text: `${creature.name}\n${creature.description}\nIt has ${creature.hp}/${creature.max_hp} health.` });
+          } else {
+            send(ws, { type: 'text', text: 'You do not see that here.' });
+          }
+        }
+      }
+      else if (verb === 'attack' || verb === 'kill') {
+        const target = parts.slice(1).join(' ');
+        if (!target) { send(ws, { type: 'text', text: 'Attack what?' }); return; }
+        const creature = db.prepare(
+          `SELECT * FROM creatures WHERE room_id = ? AND hp > 0 AND lower(name) LIKE ?`
+        ).get(player.room_id, `%${target}%`);
+        if (!creature) { send(ws, { type: 'text', text: 'You do not see that here.' }); return; }
+        const dmg = Math.floor(Math.random() * 4) + 2;
+        const newHp = creature.hp - dmg;
+        if (newHp <= 0) {
+          db.prepare('UPDATE creatures SET hp = 0 WHERE id = ?').run(creature.id);
+          send(ws, { type: 'text', text: `You hit the ${creature.name} for ${dmg} damage.\nThe ${creature.name} dies!` });
+        } else {
+          db.prepare('UPDATE creatures SET hp = ? WHERE id = ?').run(newHp, creature.id);
+          send(ws, { type: 'text', text: `You hit the ${creature.name} for ${dmg} damage. It has ${newHp} health left.` });
+        }
       }
       else if (verb === 'go' || ['n','s','e','w','u','d','north','south','east','west','up','down'].includes(verb)) {
         let dir = verb === 'go' ? parts[1] : verb;
@@ -240,7 +287,7 @@ wss.on('connection', (ws) => {
         send(ws, { type: 'text', text: 'You are the only one here for now.' });
       }
       else {
-        send(ws, { type: 'text', text: 'Unknown command. Try: look, go south, get sword, wear backpack, inventory' });
+        send(ws, { type: 'text', text: 'Unknown command. Try: look, go south, attack rat, get sword, inventory' });
       }
     }
   });
