@@ -16,7 +16,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS players (
     id INTEGER PRIMARY KEY,
     name TEXT UNIQUE,
-    room_id INTEGER DEFAULT 1
+    room_id INTEGER DEFAULT 1,
+    hp INTEGER DEFAULT 20,
+    max_hp INTEGER DEFAULT 20
   );
   CREATE TABLE IF NOT EXISTS items (
     id INTEGER PRIMARY KEY,
@@ -40,6 +42,8 @@ db.exec(`
 
 try { db.exec('ALTER TABLE items ADD COLUMN wearable INTEGER DEFAULT 0'); } catch(e) {}
 try { db.exec('ALTER TABLE items ADD COLUMN worn INTEGER DEFAULT 0'); } catch(e) {}
+try { db.exec('ALTER TABLE players ADD COLUMN hp INTEGER DEFAULT 20'); } catch(e) {}
+try { db.exec('ALTER TABLE players ADD COLUMN max_hp INTEGER DEFAULT 20'); } catch(e) {}
 
 function ensureRoom(id, name, description, exits) {
   const exists = db.prepare('SELECT id FROM rooms WHERE id = ?').get(id);
@@ -104,7 +108,6 @@ function ensureItem(name, description, roomId, wearable = 0) {
 ensureItem('old shield', 'A battered wooden shield with faded paint.', 8, 1);
 ensureItem('torch', 'A simple wooden torch. It is not lit.', 7, 0);
 
-// Ensure the rat exists
 const rat = db.prepare('SELECT id FROM creatures WHERE name = ?').get('giant rat');
 if (!rat) {
   db.prepare(`INSERT INTO creatures (name, description, room_id, hp, max_hp) VALUES (?, ?, 7, 12, 12)`).run(
@@ -163,7 +166,7 @@ wss.on('connection', (ws) => {
       if (!name) return;
       let player = db.prepare('SELECT * FROM players WHERE name = ?').get(name);
       if (!player) {
-        db.prepare('INSERT INTO players (name, room_id) VALUES (?, 1)').run(name);
+        db.prepare('INSERT INTO players (name, room_id, hp, max_hp) VALUES (?, 1, 20, 20)').run(name);
         player = db.prepare('SELECT * FROM players WHERE name = ?').get(name);
         send(ws, { type: 'text', text: `A new traveler arrives. Welcome, ${name}.` });
       } else {
@@ -206,15 +209,30 @@ wss.on('connection', (ws) => {
           `SELECT * FROM creatures WHERE room_id = ? AND hp > 0 AND lower(name) LIKE ?`
         ).get(player.room_id, `%${target}%`);
         if (!creature) { send(ws, { type: 'text', text: 'You do not see that here.' }); return; }
+
         const dmg = Math.floor(Math.random() * 4) + 2;
         const newHp = creature.hp - dmg;
+        let result = `You hit the ${creature.name} for ${dmg} damage.`;
+
         if (newHp <= 0) {
           db.prepare('UPDATE creatures SET hp = 0 WHERE id = ?').run(creature.id);
-          send(ws, { type: 'text', text: `You hit the ${creature.name} for ${dmg} damage.\nThe ${creature.name} dies!` });
+          result += `\nThe ${creature.name} dies!`;
+          // drop a rat tail
+          db.prepare(`INSERT INTO items (name, description, room_id, location) VALUES (?, ?, ?, 'room')`).run(
+            'rat tail', 'A long, hairless rat tail. It is still twitching.', player.room_id
+          );
+          result += `\nIt drops a rat tail.`;
         } else {
           db.prepare('UPDATE creatures SET hp = ? WHERE id = ?').run(newHp, creature.id);
-          send(ws, { type: 'text', text: `You hit the ${creature.name} for ${dmg} damage. It has ${newHp} health left.` });
+          result += ` It has ${newHp} health left.`;
+          // rat bites back
+          const bite = Math.floor(Math.random() * 3) + 1;
+          const p = db.prepare('SELECT hp FROM players WHERE id = ?').get(player.id);
+          const newPlayerHp = Math.max(0, (p.hp || 20) - bite);
+          db.prepare('UPDATE players SET hp = ? WHERE id = ?').run(newPlayerHp, player.id);
+          result += `\nThe ${creature.name} bites you for ${bite} damage. You have ${newPlayerHp} health.`;
         }
+        send(ws, { type: 'text', text: result });
       }
       else if (verb === 'go' || ['n','s','e','w','u','d','north','south','east','west','up','down'].includes(verb)) {
         let dir = verb === 'go' ? parts[1] : verb;
@@ -283,11 +301,15 @@ wss.on('connection', (ws) => {
           send(ws, { type: 'text', text: 'You are carrying:\n' + lines.join('\n') });
         }
       }
+      else if (verb === 'health' || verb === 'hp') {
+        const p = db.prepare('SELECT hp, max_hp FROM players WHERE id = ?').get(player.id);
+        send(ws, { type: 'text', text: `You have ${p.hp || 20}/${p.max_hp || 20} health.` });
+      }
       else if (verb === 'who') {
         send(ws, { type: 'text', text: 'You are the only one here for now.' });
       }
       else {
-        send(ws, { type: 'text', text: 'Unknown command. Try: look, go south, attack rat, get sword, inventory' });
+        send(ws, { type: 'text', text: 'Unknown command. Try: look, attack rat, health, get sword, inventory' });
       }
     }
   });
